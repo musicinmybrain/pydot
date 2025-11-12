@@ -10,7 +10,6 @@ import functools
 import os
 import sys
 import typing as T
-import unittest
 from hashlib import sha256
 
 import chardet
@@ -25,6 +24,7 @@ TESTS_DIR_1 = "my_tests"
 TESTS_DIR_2 = "graphs"
 
 _test_root = os.path.dirname(os.path.abspath(__file__))
+shapefile_dir = os.path.join(_test_root, "from-past-to-future")
 
 
 class RenderResult:
@@ -159,43 +159,31 @@ def _compare_images(
     return False  # pragma: no cover
 
 
-class TestShapeFiles(unittest.TestCase):
-    shapefile_dir = os.path.join(_test_root, "from-past-to-future")
+# image files are omitted from sdist
+@pytest.mark.skipif(
+    not os.path.isdir(shapefile_dir), reason="Image files not present"
+)
+def test_graph_with_shape_files() -> None:
+    dot_file = os.path.join(shapefile_dir, "from-past-to-future.dot")
 
-    # image files are omitted from sdist
-    @unittest.skipUnless(  # pragma: no cover
-        os.path.isdir(shapefile_dir),
-        "Skipping tests that involve images,"
-        + " they can be found in the git repository",
-    )
-    def test_graph_with_shapefiles(self) -> None:
-        dot_file = os.path.join(self.shapefile_dir, "from-past-to-future.dot")
+    pngs = [
+        os.path.join(shapefile_dir, fname)
+        for fname in os.listdir(shapefile_dir)
+        if fname.endswith(".png")
+    ]
 
-        pngs = [
-            os.path.join(self.shapefile_dir, fname)
-            for fname in os.listdir(self.shapefile_dir)
-            if fname.endswith(".png")
-        ]
+    with open(dot_file, encoding="utf-8") as f:
+        graph_data = f.read()
 
-        with open(dot_file, encoding="utf-8") as f:
-            graph_data = f.read()
+    graphs = pydot.graph_from_dot_data(graph_data)
+    assert isinstance(graphs, list)
+    assert len(graphs) == 1
+    g = graphs.pop()
+    g.set_shape_files(pngs)
 
-        graphs = pydot.graph_from_dot_data(graph_data)
-        self.assertIsNotNone(graphs)
-
-        if not isinstance(graphs, list):
-            return
-        g = graphs.pop()
-        g.set_shape_files(pngs)
-
-        rendered = PydotRenderResult(g.create(format="jpe"), g.to_string())
-        graphviz = Renderer.graphviz(dot_file, encoding="ascii")
-        if not _compare_images("from-past-to-future", rendered, graphviz):
-            raise AssertionError(
-                "from-past-to-future.dot: "
-                f"{rendered.checksum} != {graphviz.checksum} "
-                "(found pydot vs graphviz difference)"
-            )
+    rendered = PydotRenderResult(g.create(format="jpe"), g.to_string())
+    graphviz = Renderer.graphviz(dot_file, encoding="ascii")
+    assert _compare_images("from-past-to-future", rendered, graphviz)
 
 
 class RenderedTestCase:
